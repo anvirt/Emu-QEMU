@@ -759,6 +759,14 @@ static void enter_qemu_main_loop(int argc, char** argv) {
 #endif // windows
 #endif // !CONFIG_HEADLESS
 
+#ifdef ANVIRT_EMU
+// qemu works as a shared library in AnVirt Emu, so change main() to anvirt_qemu_main()
+#ifdef main
+#undef main
+#endif
+#define main anvirt_qemu_main
+#endif
+
 // create the modem_simulator sub folder on the host
 // the radio configs come from the image/<arch>/data/misc/modem_simulator
 // folder, make a copy of that folder to avd/modem_simulator/ and create
@@ -2347,7 +2355,14 @@ extern "C" int main(int argc, char** argv) {
 
     // Data directory (for keymaps and PC Bios).
     args.add("-L");
+#ifdef ANVIRT_EMU
+    std::string dataDir = getenv("ANVIRT_EMU_BUNDLE_DATA_PATH");
+    if (dataDir.empty()) {
+        dataDir = getNthParentDir(executable, 3U);
+    }
+#else
     std::string dataDir = getNthParentDir(executable, 3U);
+#endif
     if (dataDir.empty()) {
         dataDir = "lib/pc-bios";
     } else {
@@ -2587,7 +2602,11 @@ extern "C" int main(int argc, char** argv) {
 
         constexpr bool isQemu2 = true;
 
+#ifdef ANVIRT_EMU
+        std::string myserialno("ANVEMU" EMULATOR_VERSION_STRING);
+#else
         std::string myserialno("EMULATOR" EMULATOR_VERSION_STRING);
+#endif
         std::replace(myserialno.begin(), myserialno.end(), '.', 'X');
 
         std::vector<std::pair<std::string, std::string>> userspaceBootOpts = getUserspaceBootProperties(

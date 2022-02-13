@@ -68,6 +68,10 @@ int socketTcp4LoopbackServer(int port);
 // Return new socket on success, or -1/errno on error.
 int socketTcp6LoopbackServer(int port);
 
+#if HAVE_AF_UNIX
+int socketUnixDomainServer(const char *path);
+#endif
+
 // Connect to TCP |port| on loopback interface (i.e. 127.0.0.1).
 // Return new socket on success, or -1/errno on error.
 int socketTcp4LoopbackClient(int port);
@@ -75,6 +79,10 @@ int socketTcp4LoopbackClient(int port);
 // Connecto TCP |port| on IPV6 loopback interface (i.e. ::1).
 // Return new socket on success, or -1/errno on error.
 int socketTcp6LoopbackClient(int port);
+
+#if HAVE_AF_UNIX
+int socketUnixDomainClient(const char *path);
+#endif
 
 // Accept a connection on server |socket|, and return the new connection
 // socket descriptor, or -1/errno on error.

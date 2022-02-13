@@ -1387,6 +1387,25 @@ avdInfo_getVendorInitImagePath( const AvdInfo*  i )
     return _avdInfo_getContentOrSdkFilePath(i, imageName);
 }
 
+#ifdef ADB_INTERNAL
+static char*
+_avdInfo_getContentFilePath_only(const AvdInfo*  i, const char* fileName)
+{
+    char temp[MAX_PATH], *p = temp, *end = p + sizeof(temp);
+
+    p = bufprint(p, end, "%s"PATH_SEP"%s", i->contentPath, fileName);
+    if (p >= end) {
+        derror("can't access virtual device content directory");
+        return NULL;
+    }
+    return ASTRDUP(temp);
+}
+
+char*  avdInfo_getAdbSocketPath( const AvdInfo*  i ) {
+    return _avdInfo_getContentFilePath_only(i, "adb.sock");
+}
+#endif
+
 static bool
 is_x86ish(const AvdInfo* i)
 {
@@ -1485,14 +1504,24 @@ char* get_device_path(const AvdInfo* info, const char* image)
         device_table[i++] = "sdcard";
     }
     if (has_vendor(info)) {
+        #ifdef ANVIRT_EMU
+        device_table[i++] = "vdd";
+        #else
         device_table[i++] = "vendor";
+        #endif
     }
+    #ifndef ANVIRT_EMU
     if (has_encryption(info)) {
         device_table[i++] = "encryption";
     }
+    #endif
     device_table[i++] = "userdata";
     device_table[i++] = "cache";
+    #ifdef ANVIRT_EMU
+    device_table[i++] = "vda";
+    #else
     device_table[i++] = "system";
+    #endif
     int count = ARRAY_SIZE(device_table);
     for ( i=0; i < count; ++i) {
         if (strcmp(image, device_table[i]) ==0) {
@@ -1505,8 +1534,13 @@ char* get_device_path(const AvdInfo* info, const char* image)
     char buf[1024];
 
     if (is_armish(info)) {
+        #ifdef ANVIRT_EMU
+        snprintf(buf, sizeof(buf), "/dev/block/platform/%s.virtio_mmio/%s",
+                arm_device_id[i], image);
+        #else
         snprintf(buf, sizeof(buf), "/dev/block/platform/%s.virtio_mmio/by-name/%s",
                 arm_device_id[i], image);
+        #endif
     } else if (is_mipsish(info)) {
         snprintf(buf, sizeof(buf), "/dev/block/platform/%s.virtio_mmio/by-name/%s",
                 mips_device_id[i], image);
@@ -1528,7 +1562,7 @@ avdInfo_getVendorImageDevicePathInGuest( const AvdInfo*  i )
             return strdup("/dev/block/pci/pci0000:00/0000:00:06.0/by-name/vendor");
         }
     } else {
-        return get_device_path(i, "vendor");
+        return get_device_path(i, "vdd");
     }
     return NULL;
 }
@@ -1560,7 +1594,7 @@ avdInfo_getSystemImageDevicePathInGuest( const AvdInfo*  i )
     if (is_x86ish(i)) {
         return strdup("/dev/block/pci/pci0000:00/0000:00:03.0/by-name/system");
     } else {
-        return get_device_path(i, "system");
+        return get_device_path(i, "vda");
     }
 }
 

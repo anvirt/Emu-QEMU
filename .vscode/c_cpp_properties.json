@@ -13,6 +13,8 @@
             "${workspaceFolder}/../googletest/googletest/include",
             "${workspaceFolder}/../libyuv/files/include",
             "${workspaceFolder}/../tinyobjloader",
+            "${workspaceFolder}/../../anvirt/emu/emu-agent-if/include",
+            "${workspaceFolder}/anvirt/include",
             "${workspaceFolder}/android-qemu2-glue/config/target-x86_64",
             "${workspaceFolder}/android/android-emu",
             "${workspaceFolder}/android/android-grpc",

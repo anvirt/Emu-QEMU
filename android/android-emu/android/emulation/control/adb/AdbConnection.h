@@ -126,6 +126,10 @@ public:
     // with this thread will be used.
     static void setAdbPort(int port);
 
+#ifdef ADB_INTERNAL
+    static void setAdbSocketPath(const char *path);
+#endif
+
     // We cannot offer auth keys from different connections. b/150160590
     static bool failed();
 };

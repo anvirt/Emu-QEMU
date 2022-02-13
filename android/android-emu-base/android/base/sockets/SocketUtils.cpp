@@ -44,6 +44,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if HAVE_AF_UNIX
+#include <sys/un.h>
+#endif
+
 namespace android {
 namespace base {
 
@@ -220,6 +224,9 @@ union SockAddressStorage {
     struct sockaddr generic;
     struct sockaddr_in inet;
     struct sockaddr_in6 in6;
+#if HAVE_AF_UNIX
+    struct sockaddr_un un;
+#endif
 
     void initLoopbackFor(int port, int domain) {
         if (domain == AF_INET) {
@@ -267,6 +274,16 @@ union SockAddressStorage {
         return true;
     }
 
+#if HAVE_AF_UNIX
+    void initUnixDomain(const char *path) {
+        un.sun_family = AF_UNIX;
+        strlcpy(un.sun_path, path, sizeof(un.sun_path));
+        if (un.sun_path[0] == '@') {
+            un.sun_path[0] = '\0';
+        }
+    }
+#endif
+
     void setPort(int port) {
         switch (generic.sa_family) {
             case AF_INET: inet.sin_port = htons(port); break;
@@ -292,6 +309,16 @@ union SockAddressStorage {
         switch (generic.sa_family) {
             case AF_INET: sz = sizeof(inet); break;
             case AF_INET6: sz = sizeof(in6); break;
+#if HAVE_AF_UNIX
+            case AF_UNIX: {
+                if (un.sun_path[0] == '\0') {
+                    sz = (sizeof(un) - sizeof(un.sun_path) + 1 + strlen(&un.sun_path[1]));
+                } else {
+                    sz = SUN_LEN(&un);
+                }
+                break;
+            }
+#endif
             default: sz = sizeof(generic);
         }
         return static_cast<socklen_t>(sz);
@@ -598,6 +625,29 @@ int socketTcp6LoopbackServer(int port) {
     return socketTcpLoopbackServerFor(port, AF_INET6);
 }
 
+#if HAVE_AF_UNIX
+int socketUnixDomainServer(const char *path) {
+    if (!path || !path[0]) return -1;
+    ScopedSocket s(socketCreateTcpFor(AF_UNIX));
+    if (s.get() < 0) {
+        DPLOG(ERROR) << "Could not create unix domain socket\n";
+        return -1;
+    }
+
+    // socketSetXReuseAddr(s.get());
+
+    SockAddressStorage addr;
+    addr.initUnixDomain(path);
+
+    if (socketTcpBindAndListen(s.get(), &addr) < 0) {
+        DPLOG(ERROR) << "Could not bind to unix domain socket " << (path ? path : "<>") << "\n";
+        return -1;
+    }
+
+    return s.release();
+}
+#endif
+
 static int socketTcpLoopbackClientFor(int port, int domain) {
     ScopedSocket s(socketCreateTcpFor(domain));
     if (s.get() < 0) {
@@ -719,6 +769,40 @@ int socketTcp4LoopbackClient(int port) {
 int socketTcp6LoopbackClient(int port) {
     return socketTcpLoopbackClientFor(port, AF_INET6);
 }
+
+#if HAVE_AF_UNIX
+
+int socketUnixDomainClient(const char *path) {
+    if (!path || !path[0]) return -1;
+    ScopedSocket s(socketCreateTcpFor(AF_UNIX));
+    if (s.get() < 0) {
+        DPLOG(ERROR) << "Could not create unix domain socket\n";
+        return -1;
+    }
+
+    // socketSetXReuseAddr(s.get());
+
+    SockAddressStorage addr;
+    addr.initUnixDomain(path);
+
+    // |connres| the result of connect(),
+    int connres;
+    int fd = s.get();
+
+    // The initial connection needs to be nonblocking since simple configs like
+    // firewalls can make connect() hang. The initial connect() is in a VCPU
+    // thread and we don't really want to hang the entire emulator for usecases
+    // like connecting to adb, so make this socket non-blocking at first.
+    socketSetNonBlocking(fd);
+
+    if (!connect(s.get(), &addr.generic, addr.size())) {
+        return s.release();
+    } else {
+        // Some other errno issued on connect().
+        return -1;
+    }
+}
+#endif
 
 int socketAcceptAny(int serverSocket) {
     errno = 0;

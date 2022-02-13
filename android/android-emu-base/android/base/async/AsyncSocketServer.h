@@ -83,6 +83,12 @@ public:
             LoopbackMode mode = kIPv4AndIPv6,
             Looper* looper = nullptr);
 
+#ifdef HAVE_AF_UNIX
+    static std::unique_ptr<AsyncSocketServer> createUnixDomainServer(
+            const char *path,
+            ConnectCallback connectCallback);
+#endif
+
 protected:
     // No default constructor, use one of the static createXXX() method to
     // create a new instance.

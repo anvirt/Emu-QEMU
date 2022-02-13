@@ -235,6 +235,10 @@ char*  avdInfo_getSystemInitImagePath( const AvdInfo*  i );
 char*  avdInfo_getVendorImagePath( const AvdInfo* i );
 char*  avdInfo_getVendorInitImagePath( const AvdInfo*  i );
 
+#ifdef ADB_INTERNAL
+char*  avdInfo_getAdbSocketPath( const AvdInfo*  i );
+#endif
+
 /*
    The following two methods are used for device tree support
    for early boot of O should always use the following method

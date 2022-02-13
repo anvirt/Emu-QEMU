@@ -107,6 +107,9 @@ def configure(args, target):
     if args.minbuild:
         cmake_cmd += ["-DOPTION_MINBUILD=%s" % args.minbuild]
 
+    if args.anvirt_emu_build:
+        cmake_cmd += ["-DOPTION_ANVIRT_EMU=%s" % args.anvirt_emu_build]
+
     if args.gfxstream:
         cmake_cmd += ["-DGFXSTREAM=%s" % args.gfxstream]
 
@@ -309,6 +312,14 @@ def launch():
         default=False,
         action="store_true",
         help="Minimize the build to only support x86_64/aarch64.",
+    )
+
+    parser.add_argument(
+        "--anvirt-emu-build",
+        dest="anvirt_emu_build",
+        default=False,
+        action="store_true",
+        help="build AnVirt Emu.",
     )
 
     parser.add_argument(

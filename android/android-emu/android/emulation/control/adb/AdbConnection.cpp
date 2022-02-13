@@ -39,6 +39,10 @@
 #include "android/emulation/control/adb/adbkey.h"            // for adb_auth...
 #include "emulator/net/AsyncSocketAdapter.h"                 // for AsyncSoc...
 
+#ifdef ADB_INTERNAL
+#include "android/base/sockets/SocketUtils.h" // for socketUnixDomainClient
+#endif
+
 namespace android {
 namespace base {
 class AsyncThreadWithLooper;
@@ -736,6 +740,13 @@ std::shared_ptr<AdbConnection> AdbConnection::connection(int timeoutMs) {
 bool AdbConnection::failed() {
     return sAdbInternalDisabled;
 }
+
+#ifdef ADB_INTERNAL
+void AdbConnection::setAdbSocketPath(const char *path) {
+    auto looper = android::base::ThreadLooper::get();
+    setAdbSocket(new AsyncSocket(looper, base::socketUnixDomainClient(path)));
+}
+#endif
 
 void AdbConnection::setAdbPort(int adbPort) {
     auto looper = android::base::ThreadLooper::get();

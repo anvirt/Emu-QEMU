@@ -21,6 +21,10 @@
 #include <memory>
 #include <vector>
 
+#ifdef ADB_INTERNAL
+#include <unistd.h>
+#endif
+
 namespace android {
 namespace emulation {
 
@@ -74,6 +78,24 @@ bool AdbHostListener::reset(int adbPort) {
     return true;
 }
 
+#ifdef ADB_INTERNAL
+bool AdbHostListener::reset(const char *adb_socket_path) {
+    unlink(adb_socket_path);
+    mRegularAdbServer = AsyncSocketServer::createUnixDomainServer(adb_socket_path,
+            [this](int socket) {
+                return onHostServerConnection(socket, AdbPortType::RegularAdb);
+            });
+    // Don't start listening until startListening() is called.
+    if (!mRegularAdbServer) {
+        // This can happen when the emulator is probing for a free port
+        // at startup, so don't print a warning here.
+        return false;
+    }
+    mAdbSockPath = adb_socket_path;
+    return true;
+}
+#endif
+
 void AdbHostListener::startListening() {
     if (mRegularAdbServer) {
         mRegularAdbServer->startListening();
@@ -93,9 +115,16 @@ void AdbHostListener::stopListening() {
 }
 
 void AdbHostListener::notifyServer() {
+#ifdef ADB_INTERNAL
+    const char *sock_path = getenv("ANVIRT_EMU_ADB_SOCK_PATH");
+    if (mRegularAdbServer && sock_path) {
+        AdbHostServer::notify_un(mAdbSockPath.c_str(), sock_path);
+    }
+#else
     if (mRegularAdbServer && mAdbClientPort > 0) {
         AdbHostServer::notify(mRegularAdbServer->port(), mAdbClientPort);
     }
+#endif
 }
 
 bool AdbHostListener::onHostServerConnection(int socket, AdbPortType portType) {

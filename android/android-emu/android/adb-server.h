@@ -23,6 +23,10 @@ extern void android_adb_server_notify(int port);
 // Return 0 on success, -1/errno otherwise.
 extern int android_adb_server_init(int port);
 
+#ifdef ADB_INTERNAL
+extern int android_adb_server_init_un(const char *sock);
+#endif
+
 // Teardown ADB Server listener.
 extern void android_adb_server_undo_init(void);
 

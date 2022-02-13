@@ -102,7 +102,9 @@ public:
 
     // Setup the port this interface is connected to
     virtual void setSerialNumberPort(int port) = 0;
-
+#ifdef ANVIRT_EMU
+    virtual void setSerial(const std::string& serial) = 0;
+#endif
     // Returns the serial string
     virtual const std::string& serialString() const = 0;
 

@@ -82,6 +82,18 @@ set(OPTION_MINBUILD
       BOOL
       "True if we should build a minimum set of components to support 64-bit guets only."
 )
+
+set(OPTION_ANVIRT_EMU
+  FALSE
+  CACHE BOOL "True if we build AnVirt emulator"
+)
+if(OPTION_ANVIRT_EMU)
+set(OPTION_MINBUILD TRUE)
+add_definitions("-DANVIRT_EMU")
+add_definitions("-DHAVE_AF_UNIX")
+add_definitions("-DADB_INTERNAL")
+endif()
+
 set(OPTION_TCMALLOC
     TRUE
     CACHE
@@ -642,6 +654,9 @@ target_link_libraries(android-qemu-deps INTERFACE virglrenderer-headers)
 # Now we add the normal android libs, so we can use them
 add_subdirectory(android)
 add_subdirectory(android-qemu2-glue)
+if(OPTION_ANVIRT_EMU)
+  add_subdirectory(anvirt)
+endif()
 
 set(ANDROID_QEMU_ARM_DEVICES "hw/pci/goldfish_address_space.c;hw/virtio/virtio-vsock.c")
 set(ANDROID_QEMU_COMMON_DEVICES "${ANDROID_QEMU_ARM_DEVICES};hw/i386/pc_piix.c")
@@ -918,6 +933,17 @@ if(NOT OPTION_AEMU_LIBS_ONLY)
   target_link_libraries(qemu-img PRIVATE libqemu2-util libqemustub
                                          android-qemu-deps android-emu)
 
+  if(OPTION_ANVIRT_EMU)
+    # Create qemu target for Anvirt Emu
+    if(BUILDING_FOR_AARCH64)
+      android_add_anvirt_emu_executable(
+        aarch64 "${ANDROID_QEMU_arm_DEVICES_${ANDROID_TARGET_TAG}}")
+    else()
+      android_add_anvirt_emu_executable(
+        x86_64 "${ANDROID_QEMU_i386_DEVICES_${ANDROID_TARGET_TAG}}")
+    endif()
+  else() # OPTION_ANVIRT_EMU
+  # Create qemu target for Android Emulator
   # Create the qemu targets.
   if(NOT BUILDING_FOR_AARCH64)
     android_add_qemu_executable(
@@ -940,6 +966,7 @@ if(NOT OPTION_AEMU_LIBS_ONLY)
     android_add_qemu_headless_executable(
       armel "${ANDROID_QEMU_arm_DEVICES_${ANDROID_TARGET_TAG}}")
   endif()
+  endif() # OPTION_ANVIRT_EMU
 
   # The tests currently work on linux x86 only.
   if(LINUX_X86_64)

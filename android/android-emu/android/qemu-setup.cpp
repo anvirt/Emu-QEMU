@@ -351,6 +351,28 @@ static void inject_timezone_boot_property() {
 }
 
 bool android_ports_setup(const AndroidConsoleAgents* agents, bool isQemu2) {
+#ifdef ADB_INTERNAL
+    {
+        char *adb_socket_path = nullptr;
+        int rc = false;
+        do {
+            adb_socket_path = avdInfo_getAdbSocketPath(android_avdInfo);
+            if (!adb_socket_path) {
+                rc = -1;
+                break;
+            }
+
+            rc = android_adb_server_init_un(adb_socket_path);
+            if (rc) break;
+
+            android::emulation::AdbConnection::setAdbSocketPath(adb_socket_path);
+            android_adb_service_init();
+        } while (0);
+        AFREE(adb_socket_path);
+        return !rc;
+    }
+#endif
+
     if (android_op_port && android_op_ports) {
         derror("options -port and -ports cannot be used together.");
         return false;
@@ -464,6 +486,7 @@ bool android_emulation_setup(const AndroidConsoleAgents* agents, bool isQemu2) {
         android_ports_setup(agents, isQemu2);
     }
 
+#ifndef ADB_INTERNAL
     if (android_qemu_mode) {
         /* send a simple message to the ADB host server to tell it we just
          * started. it should be listening on port 5037. if we can't reach it,
@@ -473,6 +496,7 @@ bool android_emulation_setup(const AndroidConsoleAgents* agents, bool isQemu2) {
 
         android_validate_ports(android_base_port, android_adb_port);
     }
+#endif
 
     if (android_op_report_console) {
         if (report_console(android_op_report_console, android_base_port) < 0) {

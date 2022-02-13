@@ -59,13 +59,13 @@ struct Globals {
         }
 
         // Register adb-debug pipe service.
-        android::base::Stream* debugStream = nullptr;
         if (VERBOSE_CHECK(adb)) {
+            android::base::Stream* debugStream = nullptr;
             debugStream = new android::base::StdioStream(stderr);
+            AndroidPipe::Service::add(
+                std::make_unique<android::emulation::AdbDebugPipe::Service>(
+                    debugStream));
         }
-        AndroidPipe::Service::add(
-            std::make_unique<android::emulation::AdbDebugPipe::Service>(
-                debugStream));
     }
 
     AdbGuestAgent* adbGuestAgent = nullptr;
@@ -95,6 +95,16 @@ int android_adb_server_init(int port) {
     }
     return 0;
 }
+
+#ifdef ADB_INTERNAL
+int android_adb_server_init_un(const char *sock) {
+    auto globals = sGlobals.ptr();
+    if (!globals->hostListener.reset(sock)) {
+        return -1;
+    }
+    return 0;
+}
+#endif
 
 int android_get_jdwp_port() {
     return sGlobals->hostListener.jdwpPort();

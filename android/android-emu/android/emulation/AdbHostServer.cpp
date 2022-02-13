@@ -145,6 +145,28 @@ bool AdbHostServer::notify(int adbEmulatorPort, int adbClientPort) {
     return sendMessage(socket.get(), message);
 }
 
+#ifdef ADB_INTERNAL
+
+static ScopedSocket connectToAdbServer_un(const char *sock) {
+    ScopedSocket socket(android::base::socketUnixDomainClient(sock));
+    return socket;
+}
+
+bool AdbHostServer::notify_un(const char *emu_sock, const char *client_sock) {
+    // First connect to ADB server.
+    ScopedSocket socket = connectToAdbServer_un(client_sock);
+
+    if (!socket.valid()) {
+        // This can happen frequently when there is no ADB Server running
+        // on the host, so don't complain with a warning or error message.
+        return false;
+    }
+    // Send the special message
+    auto message = StringFormat("host:anvirt-emu:%s", emu_sock);
+    return sendMessage(socket.get(), message);
+}
+#endif
+
 int AdbHostServer::getClientPort() {
     int clientPort = kDefaultAdbClientPort;
     const android::base::StringView kVarName = "ANDROID_ADB_SERVER_PORT";

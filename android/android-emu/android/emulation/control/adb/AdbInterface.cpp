@@ -230,6 +230,12 @@ public:
         mSerialString = std::string("emulator-") + std::to_string(port);
     }
 
+#ifdef ANVIRT_EMU
+    virtual void setSerial(const std::string& serial) final {
+        mSerialString = serial;
+    }
+#endif
+
     const std::string& serialString() const final { return mSerialString; }
 
     AdbCommandPtr runAdbCommand(const std::vector<std::string>& args,
@@ -491,8 +497,16 @@ AdbInterfaceImpl::AdbInterfaceImpl(Looper* looper,
                                    AdbDaemon* daemon)
     : mLooper(looper), mLocator(locator), mDaemon(daemon) {
     if (!android_qemu_mode) return;
+#ifdef ANVIRT_EMU
+      mSerialString = avdInfo_getName(android_avdInfo);
+      const char *custom_adb_path = getenv("ANVIRT_EMU_ADB_PATH");
+      if (custom_adb_path) {
+          mCustomAdbPath = custom_adb_path;
+      }
+#else
     discoverAdbInstalls();
     selectAdbPath();
+#endif
 }
 
 AdbCommandPtr AdbInterfaceImpl::runAdbCommand(

@@ -101,6 +101,12 @@ extern "C" {
 #include "android/emulation/control/TurnConfig.h"
 #endif
 
+#define ENABLE_GRPC (1)
+#ifdef ANVIRT_EMU
+#undef ENABLE_GRPC
+#define ENABLE_GRPC (0)
+#endif
+
 extern "C" {
 
 #include "android/proxy/proxy_int.h"
@@ -285,6 +291,7 @@ int qemu_grpc_port() {
     return -1;
 }
 
+#if ENABLE_GRPC
 int qemu_setup_grpc() {
     if (grpcService)
         return grpcService->port();
@@ -388,6 +395,9 @@ int qemu_setup_grpc() {
     advertiser->write();
     return port;
 }
+#else
+int qemu_setup_grpc() { return -1; }
+#endif
 
 bool qemu_android_emulation_setup() {
     android::base::initializeTracing();

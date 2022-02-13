@@ -295,6 +295,10 @@ static void qemuMiscPipeDecodeAndExecute(const std::vector<uint8_t>& input,
 
         guest_boot_completed = 1;
 
+#ifdef ANVIRT_EMU
+        getConsoleAgents()->emu->bootComplete();
+#endif
+
         if (android_hw->test_quitAfterBootTimeOut > 0) {
             getConsoleAgents()->vm->vmShutdown();
         } else {

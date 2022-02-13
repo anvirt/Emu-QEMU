@@ -28,6 +28,10 @@ struct AdbHostServer {
     // on success, false/errno on error.
     static bool notify(int adbEmulatorPort, int adbClientPort);
 
+#ifdef ADB_INTERNAL
+    static bool notify_un(const char *emu_sock, const char *client_sock);
+#endif
+
     // Default ADB client port value.
     static constexpr int kDefaultAdbClientPort = 5037;
 

@@ -521,6 +521,105 @@ target_link_libraries(
   emulator-libui-headless PRIVATE android-emu emulator-libyuv FFMPEG::FFMPEG
                                   zlib android-hw-config)
 
+if(OPTION_ANVIRT_EMU)
+  set(ANDROID_LIBUI_AGENT_SRC_FILES
+      # cmake-format: sortable
+      android/emulation/control/ScreenCapturer.cpp
+      android/emulator-window.c
+      android/gpu_frame.cpp
+      android/main-common-ui.c
+      android/mp4/MP4Dataset.cpp
+      android/mp4/MP4Demuxer.cpp
+      android/mp4/SensorLocationEventProvider.cpp
+      android/mp4/VideoMetadataProvider.cpp
+      android/recording/audio/AudioProducer.cpp
+      android/recording/codecs/audio/VorbisCodec.cpp
+      android/recording/codecs/video/VP9Codec.cpp
+      android/recording/FfmpegRecorder.cpp
+      android/recording/Frame.cpp
+      android/recording/GifConverter.cpp
+      android/recording/screen-recorder.cpp
+      android/recording/video/GuestReadbackWorker.cpp
+      android/recording/video/player/Clock.cpp
+      android/recording/video/player/FrameQueue.cpp
+      android/recording/video/player/PacketQueue.cpp
+      android/recording/video/player/VideoPlayer.cpp
+      android/recording/video/player/VideoPlayerNotifier.cpp
+      android/recording/video/VideoFrameSharer.cpp
+      android/recording/video/VideoProducer.cpp
+      android/resource.c
+      android/skin/charmap.c
+      android/skin/file.c
+      android/skin/generic-event-buffer.cpp
+      android/skin/generic-event.cpp
+      android/skin/image.c
+      android/skin/keyboard.c
+      android/skin/keycode-buffer.c
+      android/skin/keycode.c
+      android/skin/LibuiAgent.cpp
+      android/skin/qt/emulator-no-qt-no-window.cpp
+      android/skin/rect.c
+      android/skin/resource.c
+      android/skin/trackball.c
+      android/skin/ui.c
+      android/skin/window.c
+      android/skin/agent/event.cpp
+      android/skin/agent/surface.cpp
+      android/skin/agent/winsys.cpp
+      android/skin/agent/window-agent-impl.cpp
+      android/skin/agent/agent.cpp
+  )
+
+  set(emulator-libui-agent_src ${ANDROID_LIBUI_AGENT_SRC_FILES})
+  set(emulator-libui-agent_darwin-x86_64_src
+      android/skin/qt/mac-native-window.mm
+  )
+  android_add_library(
+    TARGET emulator-libui-agent
+    LICENSE Apache-2.0
+    SRC # cmake-format: sortable
+        ${emulator-libui-agent_src}
+    DARWIN ${emulator-libui-agent_darwin-x86_64_src}
+    LINUX ${emulator-libui-agent_linux-x86_64_src}
+    MSVC ${emulator-libui-agent_windows_msvc-x86_64_src})
+
+  if(NOT LINUX_AARCH64)
+    target_compile_options(emulator-libui-agent PRIVATE "-DUSE_MMX=1" "-mmmx")
+  endif()
+  # Target specific compiler flags for windows, since we include FFMPEG C sources
+  # from C++ we need to make sure this flag is set for c++ sources.
+  if(NOT MSVC)
+    android_target_compile_options(
+      emulator-libui-agent windows
+      PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-literal-suffix>")
+  endif()
+
+  # Linux compiler settings
+  android_target_compile_options(
+    emulator-libui-agent linux-x86_64
+    PRIVATE "-Wno-reserved-user-defined-literal" "-Wno-pointer-bool-conversion"
+            "-Wno-deprecated-declarations" "-Wno-inconsistent-missing-override"
+            "-Wno-return-type-c-linkage" "-Wno-invalid-constexpr")
+
+  # Mac Os compiler settings
+  android_target_compile_options(
+    emulator-libui-agent darwin-x86_64
+    PRIVATE "-Wno-reserved-user-defined-literal" "-Wno-pointer-bool-conversion"
+            "-Wno-deprecated-declarations" "-Wno-inconsistent-missing-override"
+            "-Wno-return-type-c-linkage" "-Wno-invalid-constexpr")
+
+  # dependencies will remain internal, we should not be leaking out internal
+  # headers and defines.
+  target_link_libraries(
+    emulator-libui-agent PRIVATE android-emu emulator-libyuv FFMPEG::FFMPEG
+                                  zlib android-hw-config)
+
+  android_target_link_libraries(emulator-libui-agent darwin-x86_64
+                                PRIVATE "-framework Carbon")
+  android_target_link_libraries(emulator-libui-agent darwin-aarch64
+                                PRIVATE "-framework Carbon")
+endif()
+
 if(WINDOWS_MSVC_X86_64)
   # Qt in windows will call main from win-main v.s. calling qt_main. we have to
   # make a separate launch library to make sure that we do not end up with

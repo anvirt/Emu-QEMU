@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <vector>
+#include <string>
 
 namespace android {
 namespace emulation {
@@ -86,6 +87,10 @@ public:
     // if any. Return true on success, false/errno on error.
     bool reset(int adbEmulatorPort);
 
+#ifdef ADB_INTERNAL
+    bool reset(const char *adb_socket_path);
+#endif
+
     // AdbHostAgent method overrides.
     virtual void startListening() override;
     virtual void stopListening() override;
@@ -103,6 +108,10 @@ private:
     int mAdbClientPort = -1;
     std::unique_ptr<android::base::AsyncSocketServer> mRegularAdbServer;
     std::unique_ptr<android::base::AsyncSocketServer> mJdwpServer;
+
+#ifdef ADB_INTERNAL
+    std::string mAdbSockPath;
+#endif
 };
 
 }  // namespace emulation

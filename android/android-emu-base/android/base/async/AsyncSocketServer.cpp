@@ -178,5 +178,101 @@ std::unique_ptr<AsyncSocketServer> AsyncSocketServer::createTcpLoopbackServer(
     return std::unique_ptr<AsyncSocketServer>(result);
 }
 
+#ifdef HAVE_AF_UNIX
+
+namespace {
+
+class BaseUnixDomainSocketServer : public AsyncSocketServer {
+public:
+    BaseUnixDomainSocketServer(Looper* looper,
+                     ConnectCallback connectCallback,
+                     int socket)
+        : mLooper(looper), mConnectCallback(connectCallback) {
+        if (socket >= 0) {
+            mBoundSocket.reset(looper->createFdWatch(socket, onAccept, this));
+            CHECK(mBoundSocket.get());
+        }
+    }
+
+    virtual ~BaseUnixDomainSocketServer() = default;
+
+    virtual int port() const override { return -1; }
+
+    virtual void startListening() override {
+        if (mBoundSocket) {
+            mBoundSocket->wantRead();
+        }
+        mListening = true;
+    };
+
+    bool isListening() const {
+        return mListening;
+    };
+
+    virtual void stopListening() override {
+        if (mBoundSocket) {
+            mBoundSocket->dontWantRead();
+        }
+        mListening = false;
+    };
+
+    virtual LoopbackMode getListenMode() const override { return kNone; }
+
+private:
+    // Called when an i/o event happens on the bound socket. Typically
+    // a read event indicates a new client connection.
+    static void onAccept(void* opaque, int fd, unsigned events) {
+        auto server = reinterpret_cast<BaseUnixDomainSocketServer*>(opaque);
+        if (!server->isListening()) {
+            // If we listen on IPv4 and IPv6 both, then we could get onAccept from one socket
+            // even we've already called stopListening on another socket if we get connections
+            // from both sockets around same time. In such case, just ignore onAccept.
+            // b/150887008
+            // CHECK(server->getListenMode() == kIPv4AndIPv6) << "Hit onAccept after stopListening";
+            return;
+        }
+        if (events & FdWatch::kEventRead) {
+            int clientFd = socketAcceptAny(fd);
+            if (clientFd < 0) {
+                // This can happen when the client closed the connection
+                // before we could process it. Just exit and try until the
+                // next time.
+                PLOG(WARNING) << "Error when accepting host connection";
+                return;
+            }
+            // Stop listening now, this lets the callback call startListening()
+            // if it wants to allow new connections immediately. It also means
+            // we need to call it explicitly in case of error.
+            server->stopListening();
+            if (!server->mConnectCallback(clientFd)) {
+                // Assume the callback printed any necessary error message.
+                socketClose(clientFd);
+                server->startListening();
+                return;
+            }
+        }
+    }
+
+    ScopedSocketWatch mBoundSocket;
+    Looper* mLooper = nullptr;
+    bool mListening = false;
+    ConnectCallback mConnectCallback;
+};
+
+}  // namespace
+
+// static
+std::unique_ptr<AsyncSocketServer> AsyncSocketServer::createUnixDomainServer(
+            const char *path,
+            ConnectCallback connectCallback) {
+    ScopedSocket sock(socketUnixDomainServer(path));
+    AsyncSocketServer* result = nullptr;
+    if (sock.valid()) {
+        result = new BaseUnixDomainSocketServer(ThreadLooper::get(), connectCallback, sock.release());
+    }
+    return std::unique_ptr<AsyncSocketServer>(result);
+}
+#endif
+
 }  // namespace base
 }  // namespace android
