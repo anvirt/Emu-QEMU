@@ -49,7 +49,7 @@ public:
 public:
   int install(const char *apk_file) {
     if (mApkInstallCommand && mApkInstallCommand->inFlight()) {
-      return;
+      return -EBUSY;
     }
 
     mApkInstallCommand = mApkInstaller->install(
@@ -63,6 +63,7 @@ public:
           anv_emu_agent_show_error(anv_emu_agent_get(), "Install APK", errorString.c_str());
         }
       });
+    return 0;
   }
 
   void cancel() {
@@ -140,7 +141,8 @@ ANVIRT_EMU_AGENT_API void anv_emu_agent_cancel_install(anv_emu_agent *agt) {
 }
 
 ANVIRT_EMU_AGENT_API int anv_emu_agent_shutdown(anv_emu_agent_t *agt) {
-  if (!agt) return;
+  if (!agt) return -EINVAL;
   anv_emu_agent_impl_t *impl = container_of(agt, anv_emu_agent_impl_t, base);
   impl->helper->request_shutdown();
+  return 0;
 }

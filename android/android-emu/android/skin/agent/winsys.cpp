@@ -46,6 +46,8 @@ using android::base::Win32UnicodeString;
 #include <ApplicationServices/ApplicationServices.h>
 #endif
 
+extern double devicePixelRatio(void *win);
+
 #define DEBUG 1
 
 #if DEBUG
@@ -158,7 +160,7 @@ extern void skin_winsys_get_monitor_rect(SkinRect* rect) {
 
 extern int skin_winsys_get_device_pixel_ratio(double* dpr) {
     D("skin_winsys_get_device_pixel_ratio");
-    *dpr = 1.0;
+    *dpr = devicePixelRatio(skin_winsys_get_window_handle());
     return 0;
 }
 

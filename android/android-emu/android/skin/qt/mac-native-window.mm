@@ -62,3 +62,11 @@ const char* keyboard_host_layout_name_macImpl() {
             inputSource, kTISPropertyInputSourceID);
     return [inputSourceID UTF8String];
 }
+
+double devicePixelRatio(void *win) {
+    if (!win) return 1.0f;
+    NSWindow* native_win = (NSWindow *) win;
+    NSView *glView = native_win.contentView;
+    NSSize backingSize = [glView convertSizeToBacking:NSMakeSize(1.0, 1.0)];
+    return backingSize.height;
+}
