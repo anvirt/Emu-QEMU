@@ -49,6 +49,10 @@ int use_rt_clock;
 
 #ifdef __APPLE__
 
+ // do not use priv api. [zhen.chen]
+#define USE_PRIV_API (0)
+
+#if USE_PRIV_API
 // Inlined version of android/android-emu/android/base/System.cpp
 #import <Carbon/Carbon.h>
 #include <CoreFoundation/CoreFoundation.h>
@@ -61,9 +65,11 @@ CF_EXPORT CFDictionaryRef _CFCopySystemVersionDictionary(void);
 CF_EXPORT CFDictionaryRef _CFCopyServerVersionDictionary(void);
 CF_EXPORT const CFStringRef _kCFSystemVersionProductNameKey;
 CF_EXPORT const CFStringRef _kCFSystemVersionProductVersionKey;
+#endif
 
 static bool macos_use_clock_gettime()
 {
+#if USE_PRIV_API
     // Taken from https://opensource.apple.com/source/DarwinTools/DarwinTools-1/sw_vers.c
     /*
          * Copyright (c) 2005 Finlay Dobbie
@@ -161,6 +167,7 @@ static bool macos_use_clock_gettime()
     }
 
     free(version);
+#endif
     return true;
 }
 #endif

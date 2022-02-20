@@ -161,5 +161,14 @@ void hideDockIcon_macImpl(void) {
 
 }
 
+const char *getOsName_macImpl(void) {
+    static char os_name[20] = {'\0'};
+    if (!os_name[0]) {
+        NSOperatingSystemVersion osver = [NSProcessInfo processInfo].operatingSystemVersion;
+        snprintf(os_name, 20, "macOS %d.%d.%d", osver.majorVersion, osver.minorVersion, osver.patchVersion);
+    }
+    return os_name;
+}
+
 }  // namespace base
 }  // namespace android

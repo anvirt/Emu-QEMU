@@ -56,6 +56,9 @@
 #include <sys/types.h>
 #include <sys/sysctl.h>
 
+ // do not use priv api. [zhen.chen]
+#define USE_PRIV_API (0)
+#if USE_PRIV_API
 // Instead of including this private header let's copy its important
 // definitions in.
 // #include <CoreFoundation/CFPriv.h>
@@ -66,6 +69,7 @@ CF_EXPORT CFDictionaryRef _CFCopyServerVersionDictionary(void);
 CF_EXPORT const CFStringRef _kCFSystemVersionProductNameKey;
 CF_EXPORT const CFStringRef _kCFSystemVersionProductVersionKey;
 }  // extern "C"
+#endif
 #endif  // __APPLE__
 
 #include <algorithm>
@@ -131,6 +135,7 @@ using std::vector;
 #ifdef __APPLE__
 // Defined in system-native-mac.mm
 Optional<System::DiskKind> nativeDiskKind(int st_dev);
+const char *getOsName_macImpl(void);
 #endif
 
 namespace {
@@ -550,6 +555,7 @@ public:
         lastSuccessfulValue = osName.toString();
         return lastSuccessfulValue;
 #elif defined(__APPLE__)
+#if USE_PRIV_API
         // Taken from https://opensource.apple.com/source/DarwinTools/DarwinTools-1/sw_vers.c
         /*
          * Copyright (c) 2005 Finlay Dobbie
@@ -618,7 +624,10 @@ public:
         CFRelease(dict);
         lastSuccessfulValue = std::move(version);
         return lastSuccessfulValue;
-
+#else
+        lastSuccessfulValue = getOsName_macImpl();
+        return lastSuccessfulValue;
+#endif
 #elif defined(__linux__)
         using android::base::ScopedFd;
         using android::base::trim;
