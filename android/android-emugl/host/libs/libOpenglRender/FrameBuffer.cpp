@@ -425,9 +425,6 @@ bool FrameBuffer::initialize(int width, int height, bool useSubWindow,
         (emugl::getRenderer() == SELECTED_RENDERER_HOST ||
          emugl::getRenderer() == SELECTED_RENDERER_SWIFTSHADER_INDIRECT ||
          emugl::getRenderer() == SELECTED_RENDERER_ANGLE_INDIRECT);
-#ifdef __APPLE__
-    fb->m_fastBlitSupported &= emugl::getRenderer() != SELECTED_RENDERER_ANGLE_INDIRECT;
-#endif
 
     fb->m_guestUsesAngle =
         emugl::emugl_feature_is_enabled(
@@ -2367,8 +2364,6 @@ bool FrameBuffer::bind_locked() {
                 ERR("eglMakeCurrent failed");
             return false;
         }
-    } else {
-        ERR("Nested %s call detected, should never happen\n", __func__);
     }
 
     m_prevContext = prevContext;
@@ -2855,10 +2850,13 @@ bool FrameBuffer::decColorBufferRefCountLocked(HandleType p_colorbuffer) {
 
 bool FrameBuffer::compose(uint32_t bufferSize, void* buffer, bool needPost) {
     ComposeDevice* p = (ComposeDevice*)buffer;
-    AutoLock mutex(m_lock);
 
     switch (p->version) {
     case 1: {
+        for (uint32_t layer = 0; layer < p->numLayers; layer ++) {
+            goldfish_vk::updateColorBufferFromVkImage(p->layer[layer].cbHandle);
+        }
+        AutoLock mutex(m_lock);
         Post composeCmd;
         composeCmd.composeVersion = 1;
         composeCmd.composeBuffer.resize(bufferSize);
@@ -2872,23 +2870,26 @@ bool FrameBuffer::compose(uint32_t bufferSize, void* buffer, bool needPost) {
     }
 
     case 2: {
-       // support for multi-display
-       ComposeDevice_v2* p2 = (ComposeDevice_v2*)buffer;
-       if (p2->displayId != 0) {
-            mutex.unlock();
+        // support for multi-display
+        ComposeDevice_v2* p2 = (ComposeDevice_v2*)buffer;
+        for (uint32_t layer = 0; layer < p2->numLayers; layer ++) {
+            goldfish_vk::updateColorBufferFromVkImage(p2->layer[layer].cbHandle);
+        }
+
+        if (p2->displayId != 0) {
             setDisplayColorBuffer(p2->displayId, p2->targetHandle);
-            mutex.lock();
-       }
-       Post composeCmd;
-       composeCmd.composeVersion = 2;
-       composeCmd.composeBuffer.resize(bufferSize);
-       memcpy(composeCmd.composeBuffer.data(), buffer, bufferSize);
-       composeCmd.cmd = PostCmd::Compose;
-       sendPostWorkerCmd(composeCmd);
-       if (p2->displayId == 0 && needPost) {
-           post(p2->targetHandle, false);
-       }
-       return true;
+        }
+        AutoLock mutex(m_lock);
+        Post composeCmd;
+        composeCmd.composeVersion = 2;
+        composeCmd.composeBuffer.resize(bufferSize);
+        memcpy(composeCmd.composeBuffer.data(), buffer, bufferSize);
+        composeCmd.cmd = PostCmd::Compose;
+        sendPostWorkerCmd(composeCmd);
+        if (p2->displayId == 0 && needPost) {
+            post(p2->targetHandle, false);
+        }
+        return true;
     }
 
     default:
@@ -3186,6 +3187,7 @@ bool FrameBuffer::onLoad(Stream* stream,
 
     }
 
+    repost(false);
     return true;
     // TODO: restore memory management
 }

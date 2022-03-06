@@ -81,6 +81,7 @@ android_add_library(
   SRC # cmake-format: sortable
       ${EMULATOR_GRPC_SRC}
       android/emulation/control/adb/AdbService.cpp
+      android/emulation/control/async/AsyncGrpcStream.cpp
       android/emulation/control/audio/AudioStream.cpp
       android/emulation/control/camera/VirtualSceneCamera.cpp
       android/emulation/control/clipboard/Clipboard.cpp
@@ -94,6 +95,8 @@ android_add_library(
       android/emulation/control/logcat/LogcatParser.cpp
       android/emulation/control/logcat/RingStreambuf.cpp
       android/emulation/control/secure/BasicTokenAuth.cpp
+      android/emulation/control/secure/JwkDirectoryObserver.cpp
+      android/emulation/control/secure/JwtTokenAuth.cpp
       android/emulation/control/snapshot/SnapshotService.cpp
       android/emulation/control/utils/AudioUtils.cpp
       android/emulation/control/utils/EventWaiter.cpp
@@ -102,8 +105,20 @@ android_add_library(
       android/emulation/control/utils/SharedMemoryLibrary.cpp
       android/emulation/control/waterfall/WaterfallFactory.cpp)
 
-target_link_libraries(android-grpc PRIVATE png PUBLIC libprotobuf android-emu
-                                                      android-net grpc++)
+target_link_libraries(
+  android-grpc
+  PRIVATE png
+  PUBLIC libprotobuf
+         android-emu
+         android-net
+         grpc++
+         tink::config::tink_config
+         tink::jwt::jwk_set_converter
+         tink::jwt::jwt_public_key_verify
+         tink::jwt::jwt_signature_config
+         tink::jwt::jwt_validator
+         tink::jwt::verified_jwt
+         nlohmann_json::nlohmann_json)
 target_include_directories(android-grpc PUBLIC ${CMAKE_CURRENT_BINARY_DIR}
                                                ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_options(android-grpc PRIVATE -Wno-return-type-c-linkage)
@@ -133,6 +148,13 @@ if(NOT WINDOWS_MSVC_X86_64)
   target_link_libraries(android-grpc PRIVATE android-waterfall)
 endif()
 
+# Header only library..
+add_library(android-grpc-headers INTERFACE)
+target_include_directories(android-grpc-headers INTERFACE .)
+android_license(
+  TARGET "libbt-rootcanal.headers" LIBNAME None SPDX Apache-2.0
+  LICENSE Apache-2.0 LOCAL "${ANDROID_QEMU2_TOP_DIR}/LICENSES/LICENSE.APACHE2")
+
 # Set of test services.
 protobuf_generate_grpc_cpp(
   SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR} SOURCES test_echo_service.proto
@@ -161,12 +183,16 @@ android_add_test(
       android/emulation/control/GrpcServices_unittest.cpp
       android/emulation/control/logcat/LogcatParser_unittest.cpp
       android/emulation/control/logcat/RingStreambuf_unittest.cpp
+      android/emulation/control/secure/JwkDirectoryObserver_unittest.cpp
+      android/emulation/control/secure/JwtTokenAuth_unittest.cpp
       android/emulation/control/utils/EventWaiter_unittest.cpp
   DARWIN android/emulation/control/interceptor/LoggingInterceptor_unittest.cpp
   LINUX android/emulation/control/interceptor/LoggingInterceptor_unittest.cpp)
 target_link_libraries(
-  android-grpc_unittest PRIVATE android-grpc android-grpc-test-services grpc++
-                                gmock_main)
+  android-grpc_unittest
+  PRIVATE android-grpc android-grpc-test-services grpc++
+          tink::jwt::jwt_key_templates tink::jwt::jwt_signature_config
+          gmock_main)
 android_target_dependency(android-grpc_unittest linux-x86_64
                           TCMALLOC_OS_DEPENDENCIES)
 set_property(TARGET android-grpc_unittest PROPERTY CXX_STANDARD 17)

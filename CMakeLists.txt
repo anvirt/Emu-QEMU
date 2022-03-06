@@ -137,10 +137,6 @@ if(GFXSTREAM_ONLY)
   set(GFXSTREAM TRUE)
 endif()
 
-if(BUILDING_FOR_AARCH64)
-  set(OPTION_MINBUILD TRUE)
-endif()
-
 if (LINUX_AARCH64)
   set(QTWEBENGINE FALSE)
 endif()
@@ -355,9 +351,7 @@ if(WINDOWS_MSVC_X86_64)
   if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
     # Disable security checks, "we know what we are doing"
     add_c_flag("-GS-")
-    # Disable rtti, we are not going to be needing it, this is the msvc
-    # equivalent of -fno-rtti
-    add_c_flag("-GR-")
+    add_c_flag("-GR")
   endif()
 endif()
 
@@ -381,16 +375,7 @@ if(OPTION_CLANG_TIDY)
 endif()
 
 add_c_flag("-g")
-# Disable generation of information about every class with virtual functions for
-# use by the C++ runtime type identification features (dynamic_cast and typeid).
-# If you don't use those parts of the language, you can save some space by using
-# this flag. Note that exception handling uses the same information, but it will
-# generate it as needed. The  dynamic_cast operator can still be used for casts
-# that do not require runtime type information, i.e. casts to void * or to
-# unambiguous base classes.
-if(NOT WINDOWS_MSVC_X86_64)
-  add_cxx_flag("-fno-rtti")
-endif()
+
 
 # Compiling with -fno-exceptions disables exceptions support and uses the
 # variant of C++ libraries without exceptions. Use of try, catch, or throw
@@ -518,7 +503,7 @@ if(WINDOWS_MSVC_X86_64)
 
 endif()
 
-if(DARWIN_X86_64)
+if(DARWIN_X86_64 OR DARWIN_AARCH64)
   set(ANGLE_RENDERER_DEPENDENCIES
       "${ANDROID_QEMU2_TOP_DIR}/../../prebuilts/android-emulator-build/common/ANGLE/${ANDROID_TARGET_OS_FLAVOR}-${ANDROID_TARGET_ARCH}/lib/libEGL${CMAKE_SHARED_LIBRARY_SUFFIX}>lib64/gles_angle/libEGL${CMAKE_SHARED_LIBRARY_SUFFIX}"
       "${ANDROID_QEMU2_TOP_DIR}/../../prebuilts/android-emulator-build/common/ANGLE/${ANDROID_TARGET_OS_FLAVOR}-${ANDROID_TARGET_ARCH}/lib/libGLESv2${CMAKE_SHARED_LIBRARY_SUFFIX}>lib64/gles_angle/libGLESv2${CMAKE_SHARED_LIBRARY_SUFFIX}"
@@ -957,12 +942,14 @@ if(NOT OPTION_AEMU_LIBS_ONLY)
       aarch64 "${ANDROID_QEMU_arm_DEVICES_${ANDROID_TARGET_TAG}}")
 
   if(NOT OPTION_MINBUILD)
-    android_add_qemu_executable(
-      i386 "${ANDROID_QEMU_i386_DEVICES_${ANDROID_TARGET_TAG}}")
+    if(NOT BUILDING_FOR_AARCH64)
+      android_add_qemu_executable(
+        i386 "${ANDROID_QEMU_i386_DEVICES_${ANDROID_TARGET_TAG}}")
+      android_add_qemu_headless_executable(
+        i386 "${ANDROID_QEMU_i386_DEVICES_${ANDROID_TARGET_TAG}}")
+    endif()
     android_add_qemu_executable(
       armel "${ANDROID_QEMU_arm_DEVICES_${ANDROID_TARGET_TAG}}")
-    android_add_qemu_headless_executable(
-      i386 "${ANDROID_QEMU_i386_DEVICES_${ANDROID_TARGET_TAG}}")
     android_add_qemu_headless_executable(
       armel "${ANDROID_QEMU_arm_DEVICES_${ANDROID_TARGET_TAG}}")
   endif()

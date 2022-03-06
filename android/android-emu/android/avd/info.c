@@ -498,17 +498,10 @@ _avdInfo_getContentPath( AvdInfo*  i )
 
     char temp[PATH_MAX], *p=temp, *end=p+sizeof(temp);
 
-    i->contentPath = iniFile_getString(i->rootIni, ROOT_ABS_PATH_KEY, NULL);
+    i->contentPath = NULL;
 
-    if (i->contentPath == NULL) {
-        derror("bad config: %s",
-               "virtual device file lacks a "ROOT_ABS_PATH_KEY" entry");
-        return -1;
-    }
-
-    if (!path_is_dir(i->contentPath)) {
-        // If the absolute path doesn't match an actual directory, try
-        // the relative path if present.
+    /* try relatvie path first */
+    {
         const char* relPath = iniFile_getString(i->rootIni, ROOT_REL_PATH_KEY, NULL);
         if (relPath != NULL) {
             p = bufprint_config_path(temp, end);
@@ -517,6 +510,18 @@ _avdInfo_getContentPath( AvdInfo*  i )
                 str_reset(&i->contentPath, temp);
             }
         }
+    }
+
+    if (!path_is_dir(i->contentPath)) {
+        /* try absolute path if present */
+        i->contentPath = iniFile_getString(i->rootIni, ROOT_ABS_PATH_KEY, NULL);
+    }
+
+    if (!path_is_dir(i->contentPath)) {
+        derror("bad config: %s",
+               "virtual device file has no valid " ROOT_REL_PATH_KEY
+               " entry nor " ROOT_ABS_PATH_KEY " entry");
+        return -1;
     }
 
     D("virtual device content at %s", i->contentPath);
@@ -656,7 +661,9 @@ static const struct {
     { 29, "Q", "10.0 (Q) - API 29" },
     { 30, "R", "11.0 (R) - API 30"},
     { 31, "S", "12.0 (S) - API 31"},
-    { 32, "Sv2", "12.0 (S) - API 32"}
+    { 32, "Sv2", "12.0 (S) - API 32"},
+    //Change to "13.0 (T) - API 33" once SDK is finalized.
+    { 33, "Tiramisu", "Tiramisu Preview - API Tiramisu"},
 };
 
 const char* avdInfo_getApiDessertName(int apiLevel) {
@@ -2184,4 +2191,16 @@ bool avdInfo_skinHasOverlay(const char* skinName) {
         return true;
     }
     return false;
+}
+
+/* for api >= S, turns off screen after 30 minutes to save battery
+   b/216165503; leave the older api behavor unchanged for now.
+*/
+
+const char* avdInfo_screen_off_timeout(int apiLevel) {
+    if (apiLevel >= 31) {
+        return "1800000"; // 30 minutes
+    } else {
+        return "2147483647"; // 576 hours
+    }
 }

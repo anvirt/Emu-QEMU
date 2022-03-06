@@ -340,10 +340,28 @@ ToolWindow::ToolWindow(EmulatorQtWindow* window,
         mToolsUi->next_layout_button->setHidden(true);
         mToolsUi->volume_up_button->setHidden(true);
         mToolsUi->volume_down_button->setHidden(true);
+
+        if(avdInfo_getApiLevel(android_avdInfo) >= 28) {
+          mToolsUi->overview_button->setHidden(true);
+          mToolsUi->power_button->setHidden(true);
+          mToolsUi->home_button->setHidden(true);
+
+          mToolsUi->controlsLayout->removeWidget(mToolsUi->back_button);
+          mToolsUi->controlsLayout->insertWidget(0, mToolsUi->back_button);
+
+          if(avdInfo_getApiLevel(android_avdInfo) == 28) {
+            mToolsUi->wear_button_2->setHidden(true);
+          }
+        }
+    } else {
+        mToolsUi->wear_button_1->setHidden(true);
+        mToolsUi->wear_button_2->setHidden(true);
+        mToolsUi->palm_button->setHidden(true);
+        mToolsUi->tilt_button->setHidden(true);
     }
 
     if (avdInfo_getAvdFlavor(android_avdInfo) == AVD_ANDROID_AUTO) {
-        // Android Auto doesn't supoort rotate, home, back, recent
+        // Android Auto doesn't support rotate, home, back, recent
         mToolsUi->prev_layout_button->setHidden(true);
         mToolsUi->next_layout_button->setHidden(true);
         mToolsUi->back_button->setHidden(true);
@@ -750,6 +768,23 @@ void ToolWindow::handleUICommand(QtUICommand cmd, bool down, std::string extra) 
         case QtUICommand::OVERVIEW:
             forwardKeyToEmulator(KEY_APPSWITCH, down);
             break;
+        case QtUICommand::WEAR_1:
+            forwardKeyToEmulator(KEY_HOME, down);
+            break;
+        case QtUICommand::WEAR_2:
+            forwardKeyToEmulator(KEY_POWER, down);
+            break;
+        case QtUICommand::PALM:
+            forwardKeyToEmulator(KEY_SLEEP, down);
+            break;
+        case QtUICommand::TILT:
+          if (down) {
+            float tilt = 1.0f;
+                sUiEmuAgent->sensors->setPhysicalParameterTarget(
+                    PHYSICAL_PARAMETER_WRIST_TILT, &tilt, 1,
+                    PHYSICAL_INTERPOLATION_SMOOTH);
+            }
+            break;
         case QtUICommand::ROTATE_RIGHT:
         case QtUICommand::ROTATE_LEFT:
             if (down) {
@@ -1126,7 +1161,13 @@ bool ToolWindow::askWhetherToSaveSnapshot() {
     // previous saves were known to be slow, or the system has low RAM.
     bool savesWereSlow = androidSnapshot_areSavesSlow(
             android::snapshot::kDefaultBootSnapshot);
+
+#if defined(__APPLE__) && defined(__aarch64__)
+    // bug: 222536052
+    bool hasLowRam = false;
+#else
     bool hasLowRam = System::isUnderMemoryPressure();
+#endif
 
     if (saveOnExitChoice == SaveSnapshotOnExit::Always &&
         (fc::isEnabled(fc::QuickbootFileBacked) ||
@@ -1332,6 +1373,46 @@ void ToolWindow::on_overview_button_released() {
     handleUICommand(QtUICommand::OVERVIEW, false);
 }
 
+void ToolWindow::on_wear_button_1_pressed() {
+    mEmulatorWindow->raise();
+    handleUICommand(QtUICommand::WEAR_1, true);
+}
+
+void ToolWindow::on_wear_button_1_released() {
+    mEmulatorWindow->activateWindow();
+    handleUICommand(QtUICommand::WEAR_1, false);
+}
+
+void ToolWindow::on_wear_button_2_pressed() {
+    mEmulatorWindow->raise();
+    handleUICommand(QtUICommand::WEAR_2, true);
+}
+
+void ToolWindow::on_wear_button_2_released() {
+    mEmulatorWindow->activateWindow();
+    handleUICommand(QtUICommand::WEAR_2, false);
+}
+
+void ToolWindow::on_palm_button_pressed() {
+    mEmulatorWindow->raise();
+    handleUICommand(QtUICommand::PALM, true);
+}
+
+void ToolWindow::on_palm_button_released() {
+    mEmulatorWindow->activateWindow();
+    handleUICommand(QtUICommand::PALM, false);
+}
+
+void ToolWindow::on_tilt_button_pressed() {
+    mEmulatorWindow->raise();
+    handleUICommand(QtUICommand::TILT, true);
+}
+
+void ToolWindow::on_tilt_button_released() {
+    mEmulatorWindow->activateWindow();
+    handleUICommand(QtUICommand::TILT, false);
+}
+
 void ToolWindow::on_prev_layout_button_clicked() {
     mEmulatorWindow->activateWindow();
     handleUICommand(QtUICommand::ROTATE_LEFT);
@@ -1420,7 +1501,7 @@ void ToolWindow::paintEvent(QPaintEvent*) {
 
     double dpr = 1.0;
 #if QT_VERSION >= 0x060000
-    auto newScreen = window()->windowHandle()->screen();
+    auto newScreen = window()->windowHandle() ? window()->windowHandle()->screen() : nullptr;
     if (!newScreen) {
         newScreen = qGuiApp->primaryScreen();
     }

@@ -29,6 +29,7 @@
 #include "android/skin/qt/emulator-overlay.h"
 #include "android/skin/qt/error-dialog.h"
 #include "android/skin/qt/extended-pages/car-cluster-connector/car-cluster-connector.h"
+#include "android/skin/qt/multi-display-widget.h"
 #include "android/skin/qt/tool-window.h"
 #include "android/skin/qt/ui-event-recorder.h"
 #include "android/skin/qt/user-actions-counter.h"
@@ -210,7 +211,7 @@ signals:
     void updateMultiDisplayPage(int id);
 
 public:
-    void handleTouchPoints(const QTouchEvent& touchEvents);
+    void handleTouchPoints(const QTouchEvent& touchEvents, uint32_t displayId = 0);
     void pollEvent(SkinEvent* event, bool* hasEvent);
 
     WId getWindowId();
@@ -248,6 +249,7 @@ public:
                         const QTabletEvent* event,
                         bool skipSync = false);
     void handleMouseWheelEvent(int delta, Qt::Orientation orientation);
+    void handleKeyEvent(SkinEventType type, QKeyEvent* event);
     void panHorizontal(bool left);
     void panVertical(bool up);
     SkinEvent* createSkinEvent(SkinEventType type);
@@ -261,6 +263,7 @@ public:
     void setFrameAlways(bool showFrame);
     void setOnTop(bool onTop);
     void setIgnoreWheelEvent(bool ignore);
+    void setPauseAvdWhenMinimized(bool ignore);
     void simulateKeyPress(int keyCode, int modifiers);
     void simulateScrollBarChanged(int x, int y);
     void setDisplayRegion(int xOffset, int yOffset, int width, int height);
@@ -303,6 +306,8 @@ public:
                                    uint32_t dpi, uint32_t flag);
     void updateUIMultiDisplayPage(uint32_t id);
     void setUIDisplayRegion(int x, int y, int w, int h, bool ignoreOrientation = false);
+    bool addMultiDisplayWindow(uint32_t id, bool add, uint32_t w, uint32_t h);
+    bool paintMultiDisplayWindow(uint32_t id, uint32_t texture);
     const QPixmap* getRawSkinPixmap() { getSkinPixmap(); return mRawSkinPixmap; }
 
     static bool sClosed;
@@ -424,7 +429,6 @@ private:
 
     void forwardKeyEventToEmulator(SkinEventType type, QKeyEvent* event);
     void forwardGenericEventToEmulator(int type, int code, int value);
-    void handleKeyEvent(SkinEventType type, QKeyEvent* event);
 
     void maskWindowFrame();
     bool hasFrame() const;
@@ -560,6 +564,7 @@ private:
     OnDemandProgressDialog mPushDialog;
 
     bool mIgnoreWheelEvent = false;
+    bool mPauseAvdWhenMinimized = false;
     QTimer mWheelScrollTimer;
 #if QT_VERSION >= 0x060000
     QPointF mWheelScrollPos;
@@ -598,6 +603,7 @@ private:
                                           Qt::MouseButtons buttons);
     int tiltToRotation(int xTiltDeg, int yTiltDeg);
     int penOrientation(int rotation);
+    std::map<uint32_t, std::unique_ptr<MultiDisplayWidget>> mMultiDisplayWindow;
 };
 
 class SkinSurfaceBitmap {

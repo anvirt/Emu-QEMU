@@ -14,10 +14,10 @@
 
 #include "android/emulation/control/test/TestEchoService.h"  // for Service
 
-#include <functional>                                         // for __base
-#include <iostream>                                           // for operator<<
+#include <functional>  // for __base
+#include <iostream>    // for operator<<
 
-#include "android/emulation/control/async/AsyncGrcpStream.h"  // for AsyncGr...
+#include "android/emulation/control/async/AsyncGrpcStream.h"  // for AsyncGr...
 #include "grpcpp/impl/codegen/async_stream.h"                 // for ServerA...
 #include "test_echo_service.pb.h"                             // for Msg
 
@@ -50,29 +50,70 @@ Status TestEchoServiceImpl::data(ServerContext* context,
     return Status::OK;
 }
 
-std::unique_ptr<AsyncGrpcHandler<Msg, Msg>> asyncStreamEcho(
-        AsyncTestEchoService* testService,
-        const std::vector<::grpc::ServerCompletionQueue*>& cqs) {
-    return std::make_unique<AsyncGrpcHandler<Msg, Msg>>(
-            cqs,
-            [testService](ServerContext* context,
-                          ServerAsyncReaderWriter<Msg, Msg>* stream,
-                          ::grpc::CompletionQueue* new_call_cq,
-                          ::grpc::ServerCompletionQueue* notification_cq,
-                          void* tag) {
-                testService->RequeststreamEcho(context, stream, new_call_cq,
-                                               notification_cq, tag);
-            },
-            [testService](auto connection) {
+void registerAsyncStreamEcho(AsyncGrpcHandler* handler,
+                             AsyncTestEchoService* testService) {
+    handler->registerConnectionHandler(testService,
+                                       &AsyncTestEchoService::RequeststreamEcho)
+            .withCallback([testService](auto connection) {
                 std::cout << "Received a connection from: "
                           << connection->peer() << std::endl;
-                connection->setReadCallback(
-                        [](auto connection, const Msg& received) {
-                            std::cout << "Received: " << received.DebugString();
-                            connection->write(received);
-                        });
+                connection->setReadCallback([](auto from, auto received) {
+                    std::cout << "Received: " << received.DebugString();
+                    from->write(received);
+                });
                 connection->setCloseCallback([testService](auto connection) {
                     std::cout << "Closed: " << connection->peer();
+                    testService->plusOne();
+                });
+            });
+}
+
+void registerAsyncAnotherTestEchoService(
+        AsyncGrpcHandler* handler,
+        AsyncAnotherTestEchoService* testService) {
+    handler->registerConnectionHandler(
+                   testService,
+                   &AsyncAnotherTestEchoService::RequestanotherStreamEcho)
+            .withCallback([testService](auto connection) {
+                std::cout << "RequestanotherStreamEcho incoming: "
+                          << connection->peer() << std::endl;
+                connection->setReadCallback([](auto from, auto received) {
+                    std::cout << "RequestanotherStreamEcho received: "
+                              << received.DebugString();
+                    received.set_counter(-received.counter());
+                    from->write(received);
+                });
+                connection->setCloseCallback([testService](auto connection) {
+                    std::cout << "RequestanotherStreamEcho Closed: "
+                              << connection->peer();
+                    testService->plusOne();
+                });
+            });
+}
+
+void registerAsyncServerStreamingEchoService(
+        AsyncGrpcHandler* handler,
+        AsyncServerStreamingEchoService* testService) {
+    handler->registerConnectionHandler(
+                   testService,
+                   &AsyncServerStreamingEchoService::RequestserverStreamData)
+            .withCallback([testService](auto connection) {
+                std::cout << "RequestserverStreamData incoming: "
+                          << connection->peer() << std::endl;
+                connection->setReadCallback([](auto from, auto received) {
+                    std::cout << "RequestserverStreamData received: "
+                              << received.DebugString();
+                    Msg reply;
+                    reply.set_msg("Hello!");
+                    for (int i = 0; i < received.counter(); i++) {
+                        reply.set_counter(i + 1);
+                        std::cout << "Writing " << reply.DebugString();
+                        from->write(reply);
+                    }
+                });
+                connection->setCloseCallback([testService](auto connection) {
+                    std::cout << "RequestserverStreamData Closed: "
+                              << connection->peer();
                     testService->plusOne();
                 });
             });

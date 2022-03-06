@@ -15,13 +15,13 @@
 #pragma once
 #include <grpcpp/grpcpp.h>  // for Status
 #include <stdint.h>         // for uint8_t
-#include <cstdint>                                            // for uint8_t
-#include <memory>                                             // for unique_ptr
-#include <type_traits>                                        // for move
+#include <cstdint>          // for uint8_t
+#include <memory>           // for unique_ptr
+#include <type_traits>      // for move
 #include <utility>          // for move
-#include <vector>                                             // for vector
+#include <vector>           // for vector
 
-#include "android/emulation/control/async/AsyncGrcpStream.h"  // for ServerC...
+#include "android/emulation/control/async/AsyncGrpcStream.h"  // for ServerC...
 #include "grpcpp/impl/codegen/completion_queue.h"             // for ServerC...
 #include "grpcpp/impl/codegen/server_context.h"               // for ServerC...
 #include "grpcpp/impl/codegen/status.h"                       // for Status
@@ -74,16 +74,23 @@ public:
 
 using AsyncTestEchoService =
         TestEcho::WithAsyncMethod_streamEcho<TestEchoServiceImpl>;
+using AsyncAnotherTestEchoService =
+        TestEcho::WithAsyncMethod_anotherStreamEcho<AsyncTestEchoService>;
 
-using AsyncHeartbeatService = TestEcho::WithAsyncMethod_streamEcho<HeartbeatService>;
+using AsyncHeartbeatService =
+        TestEcho::WithAsyncMethod_streamEcho<HeartbeatService>;
 
-std::unique_ptr<AsyncGrpcHandler<Msg, Msg>> asyncStreamEcho(
-        AsyncTestEchoService* service,
-        const std::vector<::grpc::ServerCompletionQueue*>& cqs);
+using AsyncServerStreamingEchoService =  TestEcho::WithAsyncMethod_serverStreamData<AsyncAnotherTestEchoService>;
 
-std::unique_ptr<AsyncGrpcHandler<Msg, Msg>> asyncHeartBeat(
-        AsyncHeartbeatService* testService,
-        const std::vector<::grpc::ServerCompletionQueue*>& cqs);
-        }  // namespace control
+
+void registerAsyncStreamEcho(AsyncGrpcHandler* handler,
+                             AsyncTestEchoService* testService);
+void registerAsyncAnotherTestEchoService(AsyncGrpcHandler* handler,
+                             AsyncAnotherTestEchoService* testService);
+void registerAsyncServerStreamingEchoService(AsyncGrpcHandler* handler,
+                             AsyncServerStreamingEchoService* testService);
+void registerAsyncHeartBeat(AsyncGrpcHandler* handler,
+                            AsyncHeartbeatService* testService);
+}  // namespace control
 }  // namespace emulation
 }  // namespace android

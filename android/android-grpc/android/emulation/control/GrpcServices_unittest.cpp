@@ -25,8 +25,9 @@
 #include "android/base/system/System.h"        // for System
 #include "android/base/testing/TestSystem.h"   // for TestS...
 #include "android/base/testing/TestTempDir.h"  // for TestT...
+#include "android/base/testing/TestTempDir.h"  // for TestTempDir
 #include "android/emulation/control/GrpcServices.h"
-#include "android/emulation/control/async/AsyncGrcpStream.h"
+#include "android/emulation/control/async/AsyncGrpcStream.h"
 #include "android/emulation/control/test/BasicTokenAuthenticator.h"
 #include "android/emulation/control/test/CertificateFactory.h"  // for Certi...
 #include "android/emulation/control/test/TestEchoService.h"     // for getTe...
@@ -43,6 +44,7 @@ namespace control {
 using android::base::PathUtils;
 using android::base::System;
 using android::base::TestSystem;
+using android::base::TestTempDir;
 
 using android::base::pj;
 using grpc::Service;
@@ -50,9 +52,9 @@ using grpc::Service;
 class GrpcServiceTest : public ::testing::Test {
 protected:
     GrpcServiceTest() : mTestSystem("/", System::kProgramBitness) {
-        auto testDir = mTestSystem.getTempRoot();
-        EXPECT_TRUE(testDir->makeSubDir("home"));
-        mTestSystem.setHomeDirectory(testDir->makeSubPath("home"));
+        mTempDir = mTestSystem.getTempRoot();
+        EXPECT_TRUE(mTempDir->makeSubDir("home"));
+        mTestSystem.setHomeDirectory(mTempDir->makeSubPath("home"));
     }
 
     void writeToken(std::string fname) {
@@ -62,9 +64,7 @@ protected:
 
     void SetUp() {
         mTestSystem.host()->setEnvironmentVariable("GRPC_VERBOSITY", "DEBUG");
-        // mTestSystem.host()->setEnvironmentVariable("GRPC_VERBOSITY",
-        // "DEBUG");
-        mEchoService = new AsyncTestEchoService();
+        mEchoService = new AsyncServerStreamingEchoService();
         mHelloWorld.set_msg(HELLO);
     }
 
@@ -110,16 +110,21 @@ protected:
                 std::make_unique<BasicTokenAuthenticator>(mToken));
     }
 
-    AsyncTestEchoService* mEchoService;
+    std::shared_ptr<grpc::CallCredentials> getJwtCredentials() {
+        return grpc::MetadataCredentialsFromPlugin(
+                std::make_unique<JwtTokenAuthenticator>(mTempDir->path()));
+    }
+
+    AsyncServerStreamingEchoService* mEchoService;
     TestSystem mTestSystem;
     Msg mHelloWorld;
     EmulatorControllerService::Builder mBuilder;
-    std::unique_ptr<AsyncGrpcHandler<Msg, Msg>> mAsyncHandler;
+    std::unique_ptr<AsyncGrpcHandler> mAsyncHandler;
     std::unique_ptr<EmulatorControllerService> mEmuController;
     std::string mToken{"super_secret_token"};
 
     const std::string HELLO{"Hello World"};
-
+    TestTempDir* mTempDir;
 };
 
 TEST_F(GrpcServiceTest, BasicRegistrationSucceeds) {
@@ -296,6 +301,27 @@ TEST_F(GrpcServiceTest, InsecureWithNoTokenRejects) {
     EXPECT_EQ(invocations, mEchoService->invocations());
 }
 
+TEST_F(GrpcServiceTest, InsecureWithNoJwtRejects) {
+    auto invocations = mEchoService->invocations();
+    auto keyfile = pj(mTempDir->path(), "keys.jwk");
+    EXPECT_FALSE(System::get()->pathExists(keyfile));
+
+    mBuilder.withService(mEchoService)
+            .withPortRange(0, 1)
+            .withJwtAuthDiscoveryDir(mTempDir->path(), keyfile);
+    EXPECT_TRUE(construct());
+
+    auto [msg, status] = sayHello(::grpc::InsecureChannelCredentials());
+    EXPECT_NE(HELLO, msg.msg());
+    EXPECT_EQ(grpc::StatusCode::UNAUTHENTICATED, status.error_code());
+
+    // Underlying service method was not called
+    EXPECT_EQ(invocations, mEchoService->invocations());
+
+    // The keys.jwk file was written
+    EXPECT_TRUE(System::get()->pathExists(keyfile));
+}
+
 TEST_F(GrpcServiceTest, InsecureWithGoodTokenAccepts) {
     auto invocations = mEchoService->invocations();
     mBuilder.withService(mEchoService)
@@ -313,6 +339,35 @@ TEST_F(GrpcServiceTest, InsecureWithGoodTokenAccepts) {
 
     // Underlying service method was called
     EXPECT_EQ(invocations + 1, mEchoService->invocations());
+}
+
+TEST_F(GrpcServiceTest, InsecureWithGoodJwtAccepts) {
+    auto credentials = getJwtCredentials();
+
+    EXPECT_TRUE(
+            System::get()->pathExists(pj(mTempDir->path(), "unittest.jwk")));
+
+    auto invocations = mEchoService->invocations();
+    auto keyfile = pj(mTempDir->path(), "keys.jwk");
+    EXPECT_FALSE(System::get()->pathExists(keyfile));
+
+    mBuilder.withService(mEchoService)
+            .withPortRange(0, 1)
+            .withJwtAuthDiscoveryDir(mTempDir->path(), keyfile);
+
+    EXPECT_TRUE(construct());
+
+    // Note! ::grpc::InsecureChannel WILL NOT INJECT HEADERS!
+    auto [msg, status] =
+            sayHello(::grpc::experimental::LocalCredentials(LOCAL_TCP), true,
+                     credentials);
+    EXPECT_EQ(HELLO, msg.msg());
+    EXPECT_EQ(grpc::StatusCode::OK, status.error_code())
+            << "Failure message: " << status.error_message();
+
+    // Underlying service method was called
+    EXPECT_EQ(invocations + 1, mEchoService->invocations());
+    EXPECT_TRUE(System::get()->pathExists(keyfile));
 }
 
 TEST_F(GrpcServiceTest, SecureWithBadTokenRejects) {
@@ -387,18 +442,19 @@ TEST_F(GrpcServiceTest, AsyncBidiServerWorks) {
     VERBOSE_ENABLE(grpc);
     mBuilder.withService(mEchoService)
             .withPortRange(0, 1)
-            .withCompletionQueues(1);
+            .withAsyncServerThreads(1);
 
     EXPECT_TRUE(construct());
-    mAsyncHandler = asyncStreamEcho(mEchoService,
-                                    mEmuController->newCompletionQueue(1));
-    mAsyncHandler->start();
+    auto handler = mEmuController->asyncHandler();
+    registerAsyncStreamEcho(handler, mEchoService);
 
     // Let's send and receive just one thing..
     auto creds = ::grpc::experimental::LocalCredentials(LOCAL_TCP);
     auto channel = grpc::CreateChannel(address(), creds);
     auto client = TestEcho::NewStub(channel);
     grpc::ClientContext ctx;
+    ctx.set_deadline(std::chrono::system_clock::now() +
+                      std::chrono::seconds(15));
     Msg response;
     auto thingie = client->streamEcho(&ctx);
     Msg hello;
@@ -417,8 +473,101 @@ TEST_F(GrpcServiceTest, AsyncBidiServerWorks) {
     // Give our server a chance to close down.
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
     EXPECT_EQ(1, mEchoService->invocations());
+    mEmuController->stop();
 }
 
+TEST_F(GrpcServiceTest, AsyncBidiServerHostsManyWorks) {
+    VERBOSE_ENABLE(grpc);
+    mBuilder.withService(mEchoService)
+            .withPortRange(0, 1)
+            .withAsyncServerThreads(1);
+
+    EXPECT_TRUE(construct());
+    auto handler = mEmuController->asyncHandler();
+
+    // Let's see if we can handle two..
+    registerAsyncStreamEcho(handler, mEchoService);
+    registerAsyncAnotherTestEchoService(handler, mEchoService);
+
+    // Let's send and receive just one thing..
+    auto creds = ::grpc::experimental::LocalCredentials(LOCAL_TCP);
+    auto channel = grpc::CreateChannel(address(), creds);
+    auto client = TestEcho::NewStub(channel);
+    grpc::ClientContext ctx;
+    ctx.set_deadline(std::chrono::system_clock::now() +
+                      std::chrono::seconds(15));
+    Msg response;
+    auto thingie = client->streamEcho(&ctx);
+    Msg hello;
+    hello.set_counter(1);
+    hello.set_data("Hello World!");
+    thingie->Write(hello);
+    thingie->Read(&response);
+    thingie->WritesDone();
+
+    // Our server should have replied.
+    EXPECT_EQ(1, response.counter());
+
+    // Now let's just cancel the whole thing.
+    ctx.TryCancel();
+
+    grpc::ClientContext ctx2;
+    ctx2.set_deadline(std::chrono::system_clock::now() +
+                      std::chrono::seconds(15));
+    auto thingie2 = client->anotherStreamEcho(&ctx2);
+    Msg hello2;
+    hello.set_counter(1);
+    hello.set_data("Hello Earth!");
+    thingie2->Write(hello);
+    thingie2->Read(&response);
+    thingie2->WritesDone();
+
+    // Our server should have replied, and flipped our counter.
+    EXPECT_EQ(-1, response.counter());
+
+    ctx2.TryCancel();
+
+    // Give our server a chance to close down.
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    EXPECT_EQ(2, mEchoService->invocations());
+    mEmuController->stop();
+}
+
+TEST_F(GrpcServiceTest, AsyncServerStreamingWorks) {
+    VERBOSE_ENABLE(grpc);
+    mBuilder.withService(mEchoService)
+            .withPortRange(0, 1)
+            .withAsyncServerThreads(1);
+
+    EXPECT_TRUE(construct());
+    auto handler = mEmuController->asyncHandler();
+
+    // Let's see if we can handle two..
+    registerAsyncServerStreamingEchoService(handler, mEchoService);
+
+    // Let's send and receive just one thing..
+    auto creds = ::grpc::experimental::LocalCredentials(LOCAL_TCP);
+    auto channel = grpc::CreateChannel(address(), creds);
+    auto client = TestEcho::NewStub(channel);
+    grpc::ClientContext ctx;
+    ctx.set_deadline(std::chrono::system_clock::now() +
+                      std::chrono::seconds(15));
+    Msg response;
+    Msg hello;
+    hello.set_counter(5);
+    hello.set_data("Hello World!");
+
+    int responses = 0;
+    auto reader = client->serverStreamData(&ctx, hello);
+    while (response.counter() < hello.counter() && reader->Read(&response)) {
+        responses++;
+    }
+
+    // Our server should have replied 5 times
+    EXPECT_EQ(hello.counter(), responses);
+    ctx.TryCancel();
+    mEmuController->stop();
+}
 }  // namespace control
 }  // namespace emulation
 }  // namespace android
